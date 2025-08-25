@@ -154,8 +154,5 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
             # если в новой версии нет кандидатов — весь блок мог быть удалён; пропускаем
             continue
 
-        # 3) fallback — первая строка изменённого контента; если изменений нет — пропускаем
-        if candidates:
-            fallback = candidates[0][0]
-            resolved.append({"path": path, "line": fallback, "body": body})
+        # 3) Без координат (line_match/line) — пропускаем полностью
     return resolved
