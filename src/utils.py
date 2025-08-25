@@ -143,16 +143,9 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
                 resolved.append({"path": path, "line": best, "body": body})
                 continue
 
-        # 2) Если задан номер строки, используем его только при ТОЧНОМ совпадении
-        if isinstance(it.get("line"), int):
-            desired = int(it["line"])  # может ошибаться из‑за удалённых строк выше
-            if candidates:
-                candidate_lines = [ln for ln, _ in candidates]
-                if desired in candidate_lines:
-                    resolved.append({"path": path, "line": desired, "body": body})
-                # если точного совпадения нет — вероятно, строка была удалена; пропускаем
-            # если в новой версии нет кандидатов — весь блок мог быть удалён; пропускаем
-            continue
+        # 2) Если нет line_match и сопоставления не получилось — пропускаем элемент
+        # Чисто числовые координаты небезопасны (съезжают из‑за удалений выше).
+        continue
 
         # 3) Без координат (line_match/line) — пропускаем полностью
     return resolved
