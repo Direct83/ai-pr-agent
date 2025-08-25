@@ -111,7 +111,8 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
     Преобразуем элементы агента к виду для GitHub inline-комментов.
     Вход: [{"path","line"|"line_match","body"}]
     Выход: [{"path","line","body"}]
-    Если line не задан — ищем line_match в тексте новой версии и ставим соответствующий номер строки.
+    Приоритет: сначала пытаемся сопоставить по "line_match" (устойчиво к удалённым строкам выше),
+    затем используем числовой "line" с валидацией и, при необходимости, ближайшим совпадением.
     """
     resolved: List[Dict[str, Any]] = []
     for it in agent_items or []:
@@ -119,25 +120,45 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
         body = it.get("body") or it.get("message")
         if not path or not body:
             continue
-        # 1) если указан точный номер
-        if isinstance(it.get("line"), int):
-            resolved.append({"path": path, "line": int(it["line"]), "body": body})
-            continue
-        # 2) поиск по подстроке новой версии
+
         candidates = diff_index.get(path) or []
         line_match = (it.get("line_match") or "").strip()
+
+        # 1) Предпочитаем сопоставление по содержимому новой версии
         if line_match:
             best: Optional[int] = None
+            # точное вхождение
             for new_line, text in candidates:
                 if line_match in text:
                     best = new_line
                     break
-            if best is None and candidates:
-                best = candidates[0][0]
+            # послабление: игнорируем пробелы
+            if best is None and line_match:
+                lm_norm = re.sub(r"\s+", "", line_match)
+                for new_line, text in candidates:
+                    if lm_norm in re.sub(r"\s+", "", text):
+                        best = new_line
+                        break
             if best is not None:
                 resolved.append({"path": path, "line": best, "body": body})
                 continue
-        # 3) fallback — первая строка файла или 1
+
+        # 2) Если задан номер строки, используем его с минимальной валидацией
+        if isinstance(it.get("line"), int):
+            desired = int(it["line"])  # может ошибаться из‑за удалённых строк выше
+            if candidates:
+                candidate_lines = [ln for ln, _ in candidates]
+                if desired in candidate_lines:
+                    resolved.append({"path": path, "line": desired, "body": body})
+                else:
+                    # берём ближайшую доступную строку из новой версии как наилучшее приближение
+                    closest = min(candidate_lines, key=lambda x: abs(x - desired))
+                    resolved.append({"path": path, "line": closest, "body": body})
+            else:
+                resolved.append({"path": path, "line": desired, "body": body})
+            continue
+
+        # 3) fallback — первая строка изменённого контента или 1
         fallback = candidates[0][0] if candidates else 1
         resolved.append({"path": path, "line": fallback, "body": body})
     return resolved
