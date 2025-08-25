@@ -194,7 +194,11 @@ def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any
     def _key(it: Dict[str, Any]):
         path = it.get("path") or ""
         lm = (it.get("line_match") or "").strip()
-        return (path, lm) if (path and lm) else None
+        if not (path and lm):
+            return None
+        # Нормализуем для устойчивого объединения: убираем пробелы и крайний ';'
+        lm_norm = re.sub(r"\s+", "", lm).rstrip(";")
+        return (path, lm_norm)
     return _merge_generic(agent_items, _key)
 
 
