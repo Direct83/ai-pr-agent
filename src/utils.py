@@ -1,6 +1,7 @@
 import json
 import re
 from typing import Dict, List, Any, Tuple, Optional
+from .config import REVIEW_ONLY_PREFIXES
 
 
 def extract_json(text: str):
@@ -38,6 +39,37 @@ def extract_json(text: str):
         except Exception:
             pass
     return []
+
+
+def path_included(path: str) -> bool:
+    """true, если файл попадает под белый список префиксов (по умолчанию: только src/)."""
+    path = (path or "").lstrip("./")
+    return any(path.startswith(pref.rstrip("/") + "/") or path == pref.rstrip("/") for pref in REVIEW_ONLY_PREFIXES)
+
+
+def build_filtered_files(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """вернёт только те элементы из /pulls/{n}/files, чей filename начинается с разрешённых префиксов."""
+    out: List[Dict[str, Any]] = []
+    for f in files or []:
+        fn = f.get("filename") or ""
+        if path_included(fn):
+            out.append(f)
+    return out
+
+
+def build_diff_text_from_files(files: List[Dict[str, Any]]) -> str:
+    """
+    Склеиваем дифф только по выбранным файлам.
+    Добавляем заголовок '+++ b/<path>' перед патчем, чтобы агенты знали путь.
+    """
+    parts: List[str] = []
+    for f in files or []:
+        path = f.get("filename")
+        patch = f.get("patch")
+        if not path or not patch:
+            continue
+        parts.append(f"+++ b/{path}\n{patch}\n")
+    return "\n".join(parts)
 
 
 def build_diff_index(files: List[Dict[str, Any]]) -> Dict[str, List[Tuple[int, str]]]:
