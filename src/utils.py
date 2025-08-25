@@ -110,13 +110,17 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
     """
     Преобразуем элементы агента к виду для GitHub inline-комментов.
 
-    Формат входа: [{"path", "line_match", "body"}].
-    Поддерживается только привязка по содержимому новой версии через "line_match".
-    Числовые координаты "line" намеренно игнорируются, чтобы исключить
-    постановку комментариев к удалённым или смещённым строкам.
+    Вход:
+    - [{"path", "line_match", "body"}]
 
-    Формат выхода: [{"path", "line", "body"}] — с вычисленным номером строки
-    в НОВОЙ версии файла.
+    Поведение:
+    - Привязка выполняется ТОЛЬКО по содержимому новой версии (line_match).
+    - Если задан path, ищем совпадение внутри этого файла; иначе пробуем найти
+      уникальное совпадение по всем файлам диффа и используем его.
+    - Числовые координаты "line" игнорируем полностью.
+
+    Выход:
+    - [{"path", "line", "body"}] — номера строк даны по НОВОЙ версии.
     """
     resolved: List[Dict[str, Any]] = []
     for it in agent_items:
@@ -168,8 +172,10 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
 
 
 def _merge_generic(items: List[Dict[str, Any]], key_fn) -> List[Dict[str, Any]]:
-    """Общий алгоритм объединения по ключу. Склеивает body через пробел.
-    Сохраняет порядок первых появлений ключей; элементы без ключа идут как есть.
+    """
+    Общий алгоритм объединения по ключу. Тексты объединяются с разделителем
+    из пустой строки ("\n\n"). Порядок — по первым появлениям ключей.
+    Элементы без ключа остаются как есть.
     """
     if not items:
         return []
@@ -199,12 +205,17 @@ def _merge_generic(items: List[Dict[str, Any]], key_fn) -> List[Dict[str, Any]]:
                 continue
             seen.add(key)
             new_it = dict(proto[key])
-            new_it["body"] = " ".join(grouped.get(key) or [])
+            new_it["body"] = "\n\n".join(grouped.get(key) or [])
             result.append(new_it)
     return result
 
 
 def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Объединение элементов с одинаковыми (path, line_match) до привязки к строкам.
+    line_match нормализуется: удаляются все пробелы и финальный ';'.
+    Тексты объединяются через пустую строку.
+    """
     def _key(it: Dict[str, Any]):
         path = it.get("path") or ""
         lm = (it.get("line_match") or "").strip()
@@ -217,6 +228,10 @@ def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 
 def concat_by_path_line(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Финальное объединение после привязки: группировка по (path, line) с
+    объединением текстов через пустую строку.
+    """
     def _key(it: Dict[str, Any]):
         path = it.get("path")
         line = it.get("line")

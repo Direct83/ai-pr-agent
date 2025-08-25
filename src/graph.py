@@ -33,7 +33,6 @@ def start_node(state: ReviewState) -> Dict[str, Any]:
 
 def codestyle_node(state: ReviewState) -> Dict[str, Any]:
     items = run_codestyle_agent(state["diff_text"])
-    print(f"[codestyle] raw items: {len(items or [])}")
     tagged: List[Dict[str, Any]] = []
     for it in items or []:
         if not isinstance(it, dict):
@@ -51,7 +50,6 @@ def codestyle_node(state: ReviewState) -> Dict[str, Any]:
 
 def security_node(state: ReviewState) -> Dict[str, Any]:
     items = run_security_agent(state["diff_text"])
-    print(f"[security] raw items: {len(items or [])}")
     tagged: List[Dict[str, Any]] = []
     for it in items or []:
         if not isinstance(it, dict):
@@ -75,50 +73,10 @@ def post_node(state: ReviewState) -> Dict[str, Any]:
         return {}
     raw = state.get("raw_comments", [])
     total = len(raw or [])
-    sec_n = sum(1 for c in raw if ((c.get("body") or "").strip().lower().startswith("security:")))
-    style_n = sum(1 for c in raw if ((c.get("body") or "").strip().lower().startswith("code-style:")))
-    print(f"[post] collected raw: total={total}, code-style={style_n}, security={sec_n}")
-
-    # Детализация первых 5 элементов до объединения
-    for i, c in enumerate(raw[:5]):
-        path = c.get("path")
-        lm = (c.get("line_match") or "").strip()
-        lm_norm = re.sub(r"\s+", "", lm).rstrip(";") if lm else ""
-        body = (c.get("body") or c.get("message") or "").strip()
-        print(f"[post] raw[{i}]: path={path}, lm={lm!r}, lm_norm={lm_norm!r}, body={body[:80]!r}")
-
-    # Посмотрим, где есть кандидаты для мерджа по (path, lm_norm)
-    group_counts: Dict[tuple, int] = {}
-    for c in raw:
-        path = c.get("path")
-        lm = (c.get("line_match") or "").strip()
-        if not (path and lm):
-            continue
-        lm_norm = re.sub(r"\s+", "", lm).rstrip(";")
-        k = (path, lm_norm)
-        group_counts[k] = group_counts.get(k, 0) + 1
-    for (path, lm_norm), cnt in list(group_counts.items())[:10]:
-        if cnt > 1:
-            print(f"[post] candidate group to merge: path={path}, lm_norm={lm_norm!r}, count={cnt}")
-
     premerged = merge_by_line_match(raw)
-    print(f"[post] premerge (by path+line_match): {len(premerged)} from {total}")
-
     resolved = resolve_positions(premerged, state["diff_index"])
-    print(f"[post] resolved to inline positions: {len(resolved)}")
-
-    # Группы по (path, line) до финального мерджа
-    line_groups: Dict[tuple, int] = {}
-    for c in resolved:
-        k = (c.get("path"), c.get("line"))
-        line_groups[k] = line_groups.get(k, 0) + 1
-    for (path, line), cnt in list(line_groups.items())[:10]:
-        if cnt > 1:
-            print(f"[post] candidate merge by path+line: path={path}, line={line}, count={cnt}")
-
-    # Дополнительное объединение после привязки: по (path, line)
+    # Дополнительное объединение после привязки: по (path, line) с пустой строкой между сообщениями
     post_merged = concat_by_path_line(resolved)
-    print(f"[post] merged by path+line: {len(post_merged)} from {len(resolved)}")
     if post_merged:
         post_inline_comments(state["pr_number"], post_merged, state["head_sha"])
     return {"final_comments": post_merged, "posted": True}

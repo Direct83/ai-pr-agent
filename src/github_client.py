@@ -28,14 +28,6 @@ def get_pr_info(pr_number: int) -> Dict[str, Any]:
     return r.json()
 
 
-def get_pr_diff_text(pr_number: int) -> str:
-    repo = resolve_repo()
-    url = f"{API_URL}/repos/{repo}/pulls/{pr_number}"
-    r = requests.get(url, headers=_auth_headers({"Accept": "application/vnd.github.v3.diff"}))
-    r.raise_for_status()
-    return r.text
-
-
 def get_pr_files(pr_number: int) -> List[Dict[str, Any]]:
     repo = resolve_repo()
     out: List[Dict[str, Any]] = []
