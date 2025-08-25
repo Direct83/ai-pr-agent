@@ -120,31 +120,45 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
     """
     resolved: List[Dict[str, Any]] = []
     for it in agent_items:
-        path = it.get("path")
+        path = (it.get("path") or "").strip()
         body = it.get("body") or it.get("message")
-        if not path or not body:
+        if not body:
             continue
 
-        candidates = diff_index.get(path) or []
         line_match = (it.get("line_match") or "").strip()
 
         # 1) Сопоставляем только по содержимому новой версии
         if line_match:
-            best: Optional[int] = None
-            # точное вхождение
-            for new_line, text in candidates:
-                if line_match in text:
-                    best = new_line
-                    break
-            # послабление: игнорируем пробелы
-            if best is None and line_match:
-                lm_norm = re.sub(r"\s+", "", line_match)
-                for new_line, text in candidates:
-                    if lm_norm in re.sub(r"\s+", "", text):
-                        best = new_line
+            # Вариант А: известен путь
+            def find_in_candidates(cands: List[Tuple[int, str]]) -> Optional[int]:
+                best_local: Optional[int] = None
+                for new_line, text in cands:
+                    if line_match in text:
+                        best_local = new_line
                         break
-            if best is not None:
-                resolved.append({"path": path, "line": best, "body": body})
+                if best_local is None:
+                    lm_norm = re.sub(r"\s+", "", line_match)
+                    for new_line, text in cands:
+                        if lm_norm in re.sub(r"\s+", "", text):
+                            best_local = new_line
+                            break
+                return best_local
+
+            if path and path in diff_index:
+                best = find_in_candidates(diff_index.get(path) or [])
+                if best is not None:
+                    resolved.append({"path": path, "line": best, "body": body})
+                    continue
+
+            # Вариант Б: путь не задан — ищем по всем файлам и выбираем уникальное совпадение
+            matches: List[Tuple[str, int]] = []
+            for p, cands in (diff_index or {}).items():
+                best = find_in_candidates(cands or [])
+                if best is not None:
+                    matches.append((p, best))
+            if len(matches) == 1:
+                p, ln = matches[0]
+                resolved.append({"path": p, "line": ln, "body": body})
                 continue
 
         # 2) Если нет line_match и сопоставления не получилось — пропускаем элемент
