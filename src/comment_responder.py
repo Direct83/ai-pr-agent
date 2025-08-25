@@ -11,12 +11,13 @@ from langchain_openai import ChatOpenAI
 from .config import OPENAI_MODEL, BOT_MENTION
 from .github_client import (
     get_issue_comments,
+    get_review_thread,
     post_issue_comment,
-    post_review_comment_reply,  # NEW
+    post_review_comment_reply,
 )
 
 SYSTEM = (
-    "Ты помощник-ревьюер. Отвечай кратко и по делу. "
+    "Ты помощник-ревьюер. Отвечай на русском кратко и по делу. "
     "Давай конкретику по code style и безопасности. Если контекста не хватает — попроси уточнить."
 )
 
@@ -38,29 +39,29 @@ def _safe_resp_text(resp) -> str:
     return str(resp or "")
 
 
-def _llm_reply(history_lines: List[str]) -> str:
+def _ask_llm(history_lines: List[str], tail_hint: str) -> str:
     llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
     prompt = (
         "Контекст обсуждения (последние сообщения):\n"
         + "\n".join(history_lines[-20:])
-        + "\n\nОтветь на последний вопрос/замечание."
+        + f"\n\nЗадача: {tail_hint}\n"
+        "Отвечай максимально предметно, коротко, на русском."
     )
     resp = llm.invoke(
         [{"role": "system", "content": SYSTEM},
          {"role": "user", "content": prompt}]
     )
-    return _safe_resp_text(resp).strip() or "Нужны детали: укажи файл/строку и суть вопроса."
+    return (_safe_resp_text(resp).strip()
+            or "Уточни вопрос: к какой строке/файлу и что именно смущает?")
 
 
-def _build_history(pr_number: int) -> List[str]:
-    # берём issue-комменты PR как «историю» — этого хватает для ответа
-    history = get_issue_comments(pr_number)
-    out: List[str] = []
-    for c in history[-20:]:
+def _issue_history(pr_number: int) -> List[str]:
+    msgs = []
+    for c in get_issue_comments(int(pr_number))[-20:]:
         user = (c.get("user") or {}).get("login") or "user"
         body = c.get("body") or ""
-        out.append(f"{user}: {body}")
-    return out
+        msgs.append(f"{user}: {body}")
+    return msgs
 
 
 if __name__ == "__main__":
@@ -72,16 +73,11 @@ if __name__ == "__main__":
     with open(event_path, "r", encoding="utf-8") as f:
         evt = json.load(f)
 
-    action = evt.get("action")
-    if action != "created":
-        print(f"[responder] skip: action={action}")
+    if evt.get("action") != "created":
+        print(f"[responder] skip: action={evt.get('action')}")
         raise SystemExit(0)
 
-    # Общие поля
-    pr_number = None
-    body = ""
-
-    # 1) Комментарии в Conversation PR
+    # 1) Комментарии во вкладке Conversation
     if event_name == "issue_comment":
         issue = evt.get("issue") or {}
         if "pull_request" not in issue:
@@ -95,13 +91,13 @@ if __name__ == "__main__":
             print("[responder] no mention in issue_comment")
             raise SystemExit(0)
 
-        history_lines = _build_history(int(pr_number))
-        text = _llm_reply(history_lines)
+        history = _issue_history(int(pr_number))
+        text = _ask_llm(history, "Ответь на последний вопрос/замечание из обсуждения PR.")
         post_issue_comment(int(pr_number), text)
         print(f"[responder] issue reply posted to PR #{pr_number}")
         raise SystemExit(0)
 
-    # 2) ИНЛАЙН-комментарии к строкам кода
+    # 2) Инлайн-комментарии к строкам кода (review comments)
     if event_name == "pull_request_review_comment":
         pr = evt.get("pull_request") or {}
         pr_number = pr.get("number")
@@ -114,12 +110,22 @@ if __name__ == "__main__":
             print("[responder] skip inline: missing data or no mention")
             raise SystemExit(0)
 
-        history_lines = _build_history(int(pr_number))
-        text = _llm_reply(history_lines)
-        # ВАЖНО: отвечаем в треде этого комментария (через in_reply_to)
-        print(f"[responder] inline reply -> PR {pr_number}, in_reply_to={comment_id}")
+        # Собираем тред инлайн-обсуждения + хвост обсуждений из Conversation
+        thread = get_review_thread(int(pr_number), int(comment_id))
+        thread_lines: List[str] = []
+        for c in thread:
+            user = (c.get("user") or {}).get("login") or "user"
+            t = c.get("body") or ""
+            thread_lines.append(f"{user}: {t}")
+
+        # если по какой-то причине тред пуст — подстрахуемся issue-историей и самим вопросом
+        if not thread_lines:
+            thread_lines = _issue_history(int(pr_number))
+            thread_lines.append(f"author: {body}")
+
+        text = _ask_llm(thread_lines, "Ответь по текущему треду к изменённой строке.")
         post_review_comment_reply(int(pr_number), int(comment_id), text)
-        print(f"[responder] inline reply posted under comment {comment_id} (PR #{pr_number})")
+        print(f"[responder] inline reply posted (PR {pr_number}, in_reply_to={comment_id})")
         raise SystemExit(0)
 
     print(f"[responder] unsupported event: {event_name}")

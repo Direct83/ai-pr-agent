@@ -112,3 +112,43 @@ def post_review_comment_reply(pr_number: int, comment_id: int, body: str):
     r = requests.post(url, headers=_auth_headers(), json=payload)
     r.raise_for_status()
     return r.json()
+
+
+def get_review_comment(comment_id: int):
+    """GET /repos/{owner}/{repo}/pulls/comments/{comment_id}"""
+    repo = resolve_repo()
+    url = f"{API_URL}/repos/{repo}/pulls/comments/{int(comment_id)}"
+    r = requests.get(url, headers=_auth_headers())
+    r.raise_for_status()
+    return r.json()
+
+
+def list_pull_review_comments(pr_number: int, per_page: int = 100):
+    """GET /repos/{owner}/{repo}/pulls/{pull_number}/comments"""
+    repo = resolve_repo()
+    url = f"{API_URL}/repos/{repo}/pulls/{int(pr_number)}/comments"
+    r = requests.get(url, headers=_auth_headers(), params={"per_page": per_page})
+    r.raise_for_status()
+    return r.json()
+
+
+def get_review_thread(pr_number: int, comment_id: int):
+    """
+    Вернём весь тред для review-комментария:
+    - узнаём root_id (in_reply_to_id или сам id),
+    - берём все комменты PR и фильтруем по root_id,
+    - сортируем по created_at по возрастанию.
+    """
+    try:
+        c = get_review_comment(int(comment_id))
+        root_id = c.get("in_reply_to_id") or c.get("id")
+        comments = list_pull_review_comments(int(pr_number))
+        thread = [
+            x for x in comments
+            if (x.get("id") == root_id) or (x.get("in_reply_to_id") == root_id)
+        ]
+        thread.sort(key=lambda x: x.get("created_at", ""))
+        return thread
+    except Exception as e:
+        print(f"[github_client] get_review_thread failed: {e}")
+        return []
