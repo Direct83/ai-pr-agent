@@ -1,5 +1,5 @@
 """
-Responder по упоминанию бота (@ai-reviewer) в комментариях PR.
+Responder по упоминанию бота (@ai) в комментариях PR.
 Событие: issue_comment (PR — это вид issue).
 Видит историю обсуждения (issue comments последних ~20) и отвечает одним сообщением.
 """
@@ -10,9 +10,7 @@ from typing import List
 from langchain_openai import ChatOpenAI
 from .config import OPENAI_MODEL, BOT_MENTION
 from .github_client import (
-    get_issue_comments,
     get_review_thread,
-    post_issue_comment,
     post_review_comment_reply,
 )
 
@@ -55,15 +53,6 @@ def _ask_llm(history_lines: List[str], tail_hint: str) -> str:
             or "Уточни вопрос: к какой строке/файлу и что именно смущает?")
 
 
-def _issue_history(pr_number: int) -> List[str]:
-    msgs = []
-    for c in get_issue_comments(int(pr_number))[-20:]:
-        user = (c.get("user") or {}).get("login") or "user"
-        body = c.get("body") or ""
-        msgs.append(f"{user}: {body}")
-    return msgs
-
-
 if __name__ == "__main__":
     event_name = os.getenv("GITHUB_EVENT_NAME", "")
     event_path = os.getenv("GITHUB_EVENT_PATH")
@@ -77,56 +66,35 @@ if __name__ == "__main__":
         print(f"[responder] skip: action={evt.get('action')}")
         raise SystemExit(0)
 
-    # 1) Комментарии во вкладке Conversation
-    if event_name == "issue_comment":
-        issue = evt.get("issue") or {}
-        if "pull_request" not in issue:
-            print("[responder] skip: comment is not on a PR")
-            raise SystemExit(0)
-        pr_number = issue.get("number")
-        body = (evt.get("comment") or {}).get("body") or ""
-        print(f"[responder] event=issue_comment pr={pr_number} body={body!r}")
-
-        if not _contains_mention(body, BOT_MENTION):
-            print("[responder] no mention in issue_comment")
-            raise SystemExit(0)
-
-        history = _issue_history(int(pr_number))
-        text = _ask_llm(history, "Ответь на последний вопрос/замечание из обсуждения PR.")
-        post_issue_comment(int(pr_number), text)
-        print(f"[responder] issue reply posted to PR #{pr_number}")
+    if event_name != "pull_request_review_comment":
+        print(f"[responder] unsupported event for inline-only mode: {event_name}")
         raise SystemExit(0)
 
-    # 2) Инлайн-комментарии к строкам кода (review comments)
-    if event_name == "pull_request_review_comment":
-        pr = evt.get("pull_request") or {}
-        pr_number = pr.get("number")
-        comment = evt.get("comment") or {}
-        body = (comment.get("body") or "")
-        comment_id = comment.get("id")
-        print(f"[responder] event=pull_request_review_comment pr={pr_number} comment_id={comment_id} body={body!r}")
+    pr = evt.get("pull_request") or {}
+    pr_number = pr.get("number")
+    comment = evt.get("comment") or {}
+    body = (comment.get("body") or "")
+    comment_id = comment.get("id")
+    print(f"[responder] event=pull_request_review_comment pr={pr_number} comment_id={comment_id} body={body!r}")
 
-        if not (pr_number and comment_id and _contains_mention(body, BOT_MENTION)):
-            print("[responder] skip inline: missing data or no mention")
-            raise SystemExit(0)
-
-        # Собираем тред инлайн-обсуждения + хвост обсуждений из Conversation
-        thread = get_review_thread(int(pr_number), int(comment_id))
-        thread_lines: List[str] = []
-        for c in thread:
-            user = (c.get("user") or {}).get("login") or "user"
-            t = c.get("body") or ""
-            thread_lines.append(f"{user}: {t}")
-
-        # если по какой-то причине тред пуст — подстрахуемся issue-историей и самим вопросом
-        if not thread_lines:
-            thread_lines = _issue_history(int(pr_number))
-            thread_lines.append(f"author: {body}")
-
-        text = _ask_llm(thread_lines, "Ответь по текущему треду к изменённой строке.")
-        post_review_comment_reply(int(pr_number), int(comment_id), text)
-        print(f"[responder] inline reply posted (PR {pr_number}, in_reply_to={comment_id})")
+    if not (pr_number and comment_id and _contains_mention(body, BOT_MENTION)):
+        print("[responder] skip inline: missing data or no mention")
         raise SystemExit(0)
 
-    print(f"[responder] unsupported event: {event_name}")
-    raise SystemExit(0)
+    # Собираем тред инлайн-обсуждения
+    thread = get_review_thread(int(pr_number), int(comment_id))
+    thread_lines: List[str] = []
+    for c in thread:
+        user = (c.get("user") or {}).get("login") or "user"
+        t = c.get("body") or ""
+        thread_lines.append(f"{user}: {t}")
+
+    # Если тред пуст — используем сам комментарий автора
+    if not thread_lines:
+        thread_lines.append(f"author: {body}")
+
+    text = _ask_llm(thread_lines, "Ответь по текущему треду к изменённой строке.")
+    # отвечаем в этом же треде (через in_reply_to)
+    print(f"[responder] inline reply -> PR {pr_number}, in_reply_to={comment_id}")
+    post_review_comment_reply(int(pr_number), int(comment_id), text)
+    print(f"[responder] inline reply posted (PR {pr_number}, in_reply_to={comment_id})")

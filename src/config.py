@@ -12,7 +12,7 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")  # 'owner/repo' или None
 
 # Ник-упоминание агента
-BOT_MENTION = os.getenv("BOT_MENTION", "@ai-reviewer")
+BOT_MENTION = os.getenv("BOT_MENTION", "@ai")
 
 def require_var(name: str, value: str | None):
     if not value:

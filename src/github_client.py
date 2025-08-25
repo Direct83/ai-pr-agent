@@ -76,30 +76,6 @@ def post_inline_comments(pr_number: int, comments: List[Dict[str, Any]], commit_
     return posted
 
 
-def post_issue_comment(pr_number: int, body: str):
-    repo = resolve_repo()
-    url = f"{API_URL}/repos/{repo}/issues/{pr_number}/comments"
-    r = requests.post(url, headers=_auth_headers(), json={"body": body})
-    r.raise_for_status()
-    return r.json()
-
-
-def get_issue_comments(pr_number: int) -> List[Dict[str, Any]]:
-    repo = resolve_repo()
-    out: List[Dict[str, Any]] = []
-    page = 1
-    while True:
-        url = f"{API_URL}/repos/{repo}/issues/{pr_number}/comments?page={page}&per_page=100"
-        r = requests.get(url, headers=_auth_headers())
-        r.raise_for_status()
-        items = r.json()
-        out.extend(items)
-        if len(items) < 100:
-            break
-        page += 1
-    return out
-
-
 def post_review_comment_reply(pr_number: int, comment_id: int, body: str):
     """
     Ответ в треде review-комментария.

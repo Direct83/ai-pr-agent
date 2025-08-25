@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +31,10 @@ jobs:
       - name: Install deps
         run: pip install -r agent/requirements.txt
 
-      - name: Respond to mention
+      - name: Respond to mention (inline-only)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BOT_MENTION: '@ai-reviewer'
+          BOT_MENTION: '@ai'
         working-directory: agent
         run: python -m src.comment_responder
