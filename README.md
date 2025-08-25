@@ -3,8 +3,8 @@
 Агент для автоматического ревью Pull Request: параллельно проверяет Code Style и Security, публикует инлайн‑комментарии и отвечает в инлайн‑треде по `@ai` с учётом контекста треда.
 
 ## Возможности
-- Параллельный анализ (LangGraph): CodeStyle + Security
-- Инлайн‑комментарии в PR (по точному номеру строки или совпадению фрагмента)
+- Параллельный анализ (LangGraph, Parallel Graph): CodeStyle + Security
+- Инлайн‑комментарии в PR (по совпадению фрагмента новой версии, line_match‑only)
 - Ответы бота в инлайн‑треде по упоминанию `@ai` (через `in_reply_to`) с учётом полного контекста нитки
 - Фильтр: анализируются только файлы, чьи пути начинаются с `src/` (чтобы не комментировать служебные файлы)
 
@@ -43,7 +43,7 @@ python -m src.main <PR_NUMBER>
 1) Скачаем список файлов PR → отфильтруем по `REVIEW_ONLY_PREFIXES` (по умолчанию `src/**`)
 2) Сформируем дифф только по выбранным файлам
 3) Запустим параллельно агентов CodeStyle и Security (LangGraph)
-4) Опубликуем инлайн‑комменты
+4) Привяжем комментарии по фрагменту новой версии (line_match‑only) и опубликуем их
 
 ## GitHub Actions — готовые рабочие конфигурации
 Ниже — YAML, которыми можно пользоваться «как есть» в целевом репозитории.
@@ -107,7 +107,7 @@ jobs:
 
 ## Структура проекта (основные файлы)
 - `src/config.py` — загрузка настроек; `BOT_MENTION`, `REVIEW_ONLY_PREFIXES`
-- `src/utils.py` — `extract_json`, `path_included`, `build_filtered_files`, `build_diff_text_from_files`, `build_diff_index`, `resolve_positions`
+- `src/utils.py` — `extract_json`, `path_included`, `build_filtered_files`, `build_diff_text_from_files`, `build_diff_index`, `resolve_positions` (line_match‑only)
 - `src/github_client.py` — GitHub API (PR info, diff/files, inline‑комментарии, сбор треда, ответ в треде)
 - `src/agents/codestyle_agent.py` — агент проверки code style (ChatOpenAI)
 - `src/agents/security_agent.py` — агент проверки безопасности (ChatOpenAI)

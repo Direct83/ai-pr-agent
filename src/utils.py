@@ -50,7 +50,7 @@ def path_included(path: str) -> bool:
 def build_filtered_files(files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """вернёт только те элементы из /pulls/{n}/files, чей filename начинается с разрешённых префиксов."""
     out: List[Dict[str, Any]] = []
-    for f in files or []:
+    for f in files:
         fn = f.get("filename") or ""
         if path_included(fn):
             out.append(f)
@@ -63,7 +63,7 @@ def build_diff_text_from_files(files: List[Dict[str, Any]]) -> str:
     Добавляем заголовок '+++ b/<path>' перед патчем, чтобы агенты знали путь.
     """
     parts: List[str] = []
-    for f in files or []:
+    for f in files:
         path = f.get("filename")
         patch = f.get("patch")
         if not path or not patch:
@@ -109,13 +109,17 @@ def build_diff_index(files: List[Dict[str, Any]]) -> Dict[str, List[Tuple[int, s
 def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, List[Tuple[int, str]]]) -> List[Dict[str, Any]]:
     """
     Преобразуем элементы агента к виду для GitHub inline-комментов.
-    Вход: [{"path","line"|"line_match","body"}]
-    Выход: [{"path","line","body"}]
-    Приоритет: сначала пытаемся сопоставить по "line_match" (устойчиво к удалённым строкам выше),
-    затем используем числовой "line" с валидацией и, при необходимости, ближайшим совпадением.
+
+    Формат входа: [{"path", "line_match", "body"}].
+    Поддерживается только привязка по содержимому новой версии через "line_match".
+    Числовые координаты "line" намеренно игнорируются, чтобы исключить
+    постановку комментариев к удалённым или смещённым строкам.
+
+    Формат выхода: [{"path", "line", "body"}] — с вычисленным номером строки
+    в НОВОЙ версии файла.
     """
     resolved: List[Dict[str, Any]] = []
-    for it in agent_items or []:
+    for it in agent_items:
         path = it.get("path")
         body = it.get("body") or it.get("message")
         if not path or not body:
@@ -124,7 +128,7 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
         candidates = diff_index.get(path) or []
         line_match = (it.get("line_match") or "").strip()
 
-        # 1) Предпочитаем сопоставление по содержимому новой версии
+        # 1) Сопоставляем только по содержимому новой версии
         if line_match:
             best: Optional[int] = None
             # точное вхождение
@@ -146,6 +150,4 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
         # 2) Если нет line_match и сопоставления не получилось — пропускаем элемент
         # Чисто числовые координаты небезопасны (съезжают из‑за удалений выше).
         continue
-
-        # 3) Без координат (line_match/line) — пропускаем полностью
     return resolved

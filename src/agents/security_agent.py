@@ -12,9 +12,9 @@ PROMPT = (
     "- Потенциальные утечки PII\n\n"
     "Ответ СТРОГО JSON:\n"
     "[\n"
-    '  {"path":"file","line":123,"body":"почему риск и как исправить"},\n'
     '  {"path":"file","line_match":"фрагмент_строки_из_новой_версии","body":"почему риск и как исправить"}\n'
     "]\n\n"
+    "Только с полем \"line_match\". Поле \"line\" НЕ ИСПОЛЬЗУЙ.\n\n"
     "Подсказка по путям: смотри заголовки вида '+++ b/<path>' в diff.\n\n"
     "Diff:\n"
     "<<<DIFF\n{diff}\nDIFF>>>"
@@ -25,5 +25,5 @@ def run_security_agent(diff: str) -> List[Dict[str, Any]]:
     llm = ChatOpenAI(model=get_openai_model(), temperature=0)
     prompt_text = PROMPT.replace("{diff}", diff)
     resp = llm.invoke(prompt_text)
-    data = extract_json(getattr(resp, "content", "") or "")
+    data = extract_json(getattr(resp, "content", ""))
     return data if isinstance(data, list) else []
