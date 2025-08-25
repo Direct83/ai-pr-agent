@@ -151,3 +151,63 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
         # Чисто числовые координаты небезопасны (съезжают из‑за удалений выше).
         continue
     return resolved
+
+
+def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Объединяет элементы с одинаковыми (path, line_match) в один, склеивая body через пробел.
+    Порядок сохраняется по первому появлению каждой пары (path, line_match).
+    """
+    if not agent_items:
+        return []
+
+    # Сбор частей по ключу (path, line_match)
+    key_to_parts: Dict[Tuple[str, str], List[str]] = {}
+    key_to_proto: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    order: List[Tuple[str, str]] = []
+
+    for it in agent_items:
+        path = it.get("path") or ""
+        lm = (it.get("line_match") or "").strip()
+        body = (it.get("body") or it.get("message") or "").strip()
+        if path and lm and body:
+            key = (path, lm)
+            if key not in key_to_parts:
+                key_to_parts[key] = []
+                key_to_proto[key] = dict(it)
+                order.append(key)
+            key_to_parts[key].append(body)
+        else:
+            # Сохраняем элементы без line_match как есть (вставим их позже по порядку)
+            # Пометим уникальный ключ, чтобы затем корректно восстановить порядок
+            pass
+
+    # Формируем объединённые элементы, сохраняя порядок первых появлений ключей
+    merged_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for key in order:
+        proto = key_to_proto[key]
+        parts = key_to_parts.get(key) or []
+        combined_body = " ".join(parts).strip()
+        new_item = dict(proto)
+        new_item["body"] = combined_body
+        merged_by_key[key] = new_item
+
+    # Восстанавливаем исходный порядок обходом входного списка и вставляем
+    # объединённые элементы один раз на первое вхождение соответствующего key
+    seen_keys: set[Tuple[str, str]] = set()
+    result: List[Dict[str, Any]] = []
+    for it in agent_items:
+        path = it.get("path") or ""
+        lm = (it.get("line_match") or "").strip()
+        body = (it.get("body") or it.get("message") or "").strip()
+        if path and lm and body:
+            key = (path, lm)
+            if key in merged_by_key and key not in seen_keys:
+                result.append(merged_by_key[key])
+                seen_keys.add(key)
+            # повторные элементы того же ключа пропускаем (они уже объединены)
+        else:
+            # Элемент без line_match — оставляем как есть
+            result.append(it)
+
+    return result

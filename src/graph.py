@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 
 from .agents.codestyle_agent import run_codestyle_agent
 from .agents.security_agent import run_security_agent
-from .utils import resolve_positions
+from .utils import resolve_positions, merge_by_line_match
 from .github_client import post_inline_comments
 
 
@@ -32,12 +32,36 @@ def start_node(state: ReviewState) -> Dict[str, Any]:
 
 def codestyle_node(state: ReviewState) -> Dict[str, Any]:
     items = run_codestyle_agent(state["diff_text"])
-    return {"raw_comments": items, "codestyle_done": True}
+    tagged: List[Dict[str, Any]] = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        body = (it.get("body") or it.get("message") or "").strip()
+        if not body:
+            continue
+        new_it = dict(it)
+        if not body.lower().startswith("code-style:"):
+            body = f"code-style: {body}"
+        new_it["body"] = body
+        tagged.append(new_it)
+    return {"raw_comments": tagged, "codestyle_done": True}
 
 
 def security_node(state: ReviewState) -> Dict[str, Any]:
     items = run_security_agent(state["diff_text"])
-    return {"raw_comments": items, "security_done": True}
+    tagged: List[Dict[str, Any]] = []
+    for it in items or []:
+        if not isinstance(it, dict):
+            continue
+        body = (it.get("body") or it.get("message") or "").strip()
+        if not body:
+            continue
+        new_it = dict(it)
+        if not body.lower().startswith("security:"):
+            body = f"security: {body}"
+        new_it["body"] = body
+        tagged.append(new_it)
+    return {"raw_comments": tagged, "security_done": True}
 
 
 def post_node(state: ReviewState) -> Dict[str, Any]:
@@ -46,7 +70,8 @@ def post_node(state: ReviewState) -> Dict[str, Any]:
         return {}
     if not (state.get("codestyle_done") and state.get("security_done")):
         return {}
-    resolved = resolve_positions(state.get("raw_comments", []), state["diff_index"])
+    premerged = merge_by_line_match(state.get("raw_comments", []))
+    resolved = resolve_positions(premerged, state["diff_index"])
     if resolved:
         post_inline_comments(state["pr_number"], resolved, state["head_sha"])
     return {"final_comments": resolved, "posted": True}
