@@ -116,8 +116,9 @@ if __name__ == "__main__":
 
         history_lines = _build_history(int(pr_number))
         text = _llm_reply(history_lines)
-        # ВАЖНО: отвечаем в треде этого комментария
-        post_review_comment_reply(int(comment_id), text)
+        # ВАЖНО: отвечаем в треде этого комментария (через in_reply_to)
+        print(f"[responder] inline reply -> PR {pr_number}, in_reply_to={comment_id}")
+        post_review_comment_reply(int(pr_number), int(comment_id), text)
         print(f"[responder] inline reply posted under comment {comment_id} (PR #{pr_number})")
         raise SystemExit(0)
 

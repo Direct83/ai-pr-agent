@@ -100,13 +100,15 @@ def get_issue_comments(pr_number: int) -> List[Dict[str, Any]]:
     return out
 
 
-def post_review_comment_reply(comment_id: int, body: str):
+def post_review_comment_reply(pr_number: int, comment_id: int, body: str):
     """
-    Ответить в треде ИНЛАЙН-комментария (pull_request_review_comment).
-    POST /repos/{owner}/{repo}/pulls/comments/{comment_id}/replies
+    Ответ в треде review-комментария.
+    Рекомендуемый путь: POST /repos/{owner}/{repo}/pulls/{pull_number}/comments
+    с payload {"body": ..., "in_reply_to": <comment_id>}
     """
     repo = resolve_repo()
-    url = f"{API_URL}/repos/{repo}/pulls/comments/{comment_id}/replies"
-    r = requests.post(url, headers=_auth_headers(), json={"body": body})
+    url = f"{API_URL}/repos/{repo}/pulls/{pr_number}/comments"
+    payload = {"body": body, "in_reply_to": int(comment_id)}
+    r = requests.post(url, headers=_auth_headers(), json=payload)
     r.raise_for_status()
     return r.json()
