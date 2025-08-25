@@ -143,22 +143,19 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
                 resolved.append({"path": path, "line": best, "body": body})
                 continue
 
-        # 2) Если задан номер строки, используем его с минимальной валидацией
+        # 2) Если задан номер строки, используем его только при ТОЧНОМ совпадении
         if isinstance(it.get("line"), int):
             desired = int(it["line"])  # может ошибаться из‑за удалённых строк выше
             if candidates:
                 candidate_lines = [ln for ln, _ in candidates]
                 if desired in candidate_lines:
                     resolved.append({"path": path, "line": desired, "body": body})
-                else:
-                    # берём ближайшую доступную строку из новой версии как наилучшее приближение
-                    closest = min(candidate_lines, key=lambda x: abs(x - desired))
-                    resolved.append({"path": path, "line": closest, "body": body})
-            else:
-                resolved.append({"path": path, "line": desired, "body": body})
+                # если точного совпадения нет — вероятно, строка была удалена; пропускаем
+            # если в новой версии нет кандидатов — весь блок мог быть удалён; пропускаем
             continue
 
-        # 3) fallback — первая строка изменённого контента или 1
-        fallback = candidates[0][0] if candidates else 1
-        resolved.append({"path": path, "line": fallback, "body": body})
+        # 3) fallback — первая строка изменённого контента; если изменений нет — пропускаем
+        if candidates:
+            fallback = candidates[0][0]
+            resolved.append({"path": path, "line": fallback, "body": body})
     return resolved
