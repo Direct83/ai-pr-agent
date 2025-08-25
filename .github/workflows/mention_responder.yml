@@ -21,7 +21,7 @@ jobs:
       - name: Checkout agent repo
         uses: actions/checkout@v4
         with:
-          repository: Direct83/ai-pr-reviewer
+          repository: Direct83/ai-pr-agent
           ref: ${{ inputs.agent_ref }}
           path: agent
 
