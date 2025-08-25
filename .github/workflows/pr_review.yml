@@ -1,8 +1,12 @@
-name: AI PR Review
+name: AI PR Review (reusable)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  workflow_call:
+    inputs:
+      agent_ref:
+        type: string
+        required: false
+        default: main
 
 jobs:
   review:
@@ -11,18 +15,29 @@ jobs:
       contents: read
       pull-requests: write
     steps:
+      # Код целевого репозитория (где открыт PR)
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
-      - name: Set up Python
-        uses: actions/setup-python@v5
+
+      # Код центрального репозитория с агентом
+      - name: Checkout agent repo
+        uses: actions/checkout@v4
+        with:
+          repository: Direct83/ai-pr-reviewer
+          ref: ${{ inputs.agent_ref }}
+          path: agent
+
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install deps
-        run: pip install -r requirements.txt
-      - name: Run AI Review (LangGraph)
+        run: pip install -r agent/requirements.txt
+
+      - name: Run AI Review
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # GITHUB_REPOSITORY пробрасывается Actions автоматически, config читает через os.getenv
+        working-directory: agent
         run: python -m src.main ${{ github.event.pull_request.number }}
