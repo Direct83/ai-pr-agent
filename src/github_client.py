@@ -98,3 +98,15 @@ def get_issue_comments(pr_number: int) -> List[Dict[str, Any]]:
             break
         page += 1
     return out
+
+
+def post_review_comment_reply(comment_id: int, body: str):
+    """
+    Ответить в треде ИНЛАЙН-комментария (pull_request_review_comment).
+    POST /repos/{owner}/{repo}/pulls/comments/{comment_id}/replies
+    """
+    repo = resolve_repo()
+    url = f"{API_URL}/repos/{repo}/pulls/comments/{comment_id}/replies"
+    r = requests.post(url, headers=_auth_headers(), json={"body": body})
+    r.raise_for_status()
+    return r.json()

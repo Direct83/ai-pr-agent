@@ -9,7 +9,11 @@ from typing import List
 
 from langchain_openai import ChatOpenAI
 from .config import OPENAI_MODEL, BOT_MENTION
-from .github_client import get_issue_comments, post_issue_comment
+from .github_client import (
+    get_issue_comments,
+    post_issue_comment,
+    post_review_comment_reply,  # NEW
+)
 
 SYSTEM = (
     "Ты помощник-ревьюер. Отвечай кратко и по делу. "
@@ -22,7 +26,6 @@ def _contains_mention(text: str, mention: str) -> bool:
 
 
 def _safe_resp_text(resp) -> str:
-    # Универсально достаём текст из ответа LLM
     if hasattr(resp, "content") and isinstance(resp.content, str):
         return resp.content
     if hasattr(resp, "content") and isinstance(resp.content, list):
@@ -35,32 +38,29 @@ def _safe_resp_text(resp) -> str:
     return str(resp or "")
 
 
-def run_responder(pr_number: int, trigger_text: str):
-    if not _contains_mention(trigger_text, BOT_MENTION):
-        print(f"[responder] no mention in comment: {trigger_text!r}")
-        return
-
-    # Берём последние ~20 сообщений из обсуждения PR (issue comments)
-    history = get_issue_comments(pr_number)
-    convo_lines: List[str] = []
-    for c in history[-20:]:
-        user = (c.get("user") or {}).get("login") or "user"
-        body = c.get("body") or ""
-        convo_lines.append(f"{user}: {body}")
-
+def _llm_reply(history_lines: List[str]) -> str:
     llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
     prompt = (
         "Контекст обсуждения (последние сообщения):\n"
-        + "\n".join(convo_lines)
+        + "\n".join(history_lines[-20:])
         + "\n\nОтветь на последний вопрос/замечание."
     )
     resp = llm.invoke(
         [{"role": "system", "content": SYSTEM},
          {"role": "user", "content": prompt}]
     )
-    text = _safe_resp_text(resp).strip() or "Нужны детали: укажи файл/строку и суть вопроса."
-    post_issue_comment(pr_number, text)
-    print(f"[responder] replied to PR #{pr_number}")
+    return _safe_resp_text(resp).strip() or "Нужны детали: укажи файл/строку и суть вопроса."
+
+
+def _build_history(pr_number: int) -> List[str]:
+    # берём issue-комменты PR как «историю» — этого хватает для ответа
+    history = get_issue_comments(pr_number)
+    out: List[str] = []
+    for c in history[-20:]:
+        user = (c.get("user") or {}).get("login") or "user"
+        body = c.get("body") or ""
+        out.append(f"{user}: {body}")
+    return out
 
 
 if __name__ == "__main__":
@@ -77,12 +77,11 @@ if __name__ == "__main__":
         print(f"[responder] skip: action={action}")
         raise SystemExit(0)
 
+    # Общие поля
     pr_number = None
     body = ""
 
-    # Поддерживаем ДВА источника событий:
-    # 1) issue_comment — комментарии во вкладке Conversation PR
-    # 2) pull_request_review_comment — inline-комментарии к строкам кода
+    # 1) Комментарии в Conversation PR
     if event_name == "issue_comment":
         issue = evt.get("issue") or {}
         if "pull_request" not in issue:
@@ -90,16 +89,37 @@ if __name__ == "__main__":
             raise SystemExit(0)
         pr_number = issue.get("number")
         body = (evt.get("comment") or {}).get("body") or ""
-    elif event_name == "pull_request_review_comment":
+        print(f"[responder] event=issue_comment pr={pr_number} body={body!r}")
+
+        if not _contains_mention(body, BOT_MENTION):
+            print("[responder] no mention in issue_comment")
+            raise SystemExit(0)
+
+        history_lines = _build_history(int(pr_number))
+        text = _llm_reply(history_lines)
+        post_issue_comment(int(pr_number), text)
+        print(f"[responder] issue reply posted to PR #{pr_number}")
+        raise SystemExit(0)
+
+    # 2) ИНЛАЙН-комментарии к строкам кода
+    if event_name == "pull_request_review_comment":
         pr = evt.get("pull_request") or {}
         pr_number = pr.get("number")
-        body = (evt.get("comment") or {}).get("body") or ""
-    else:
-        print(f"[responder] unsupported event: {event_name}")
+        comment = evt.get("comment") or {}
+        body = (comment.get("body") or "")
+        comment_id = comment.get("id")
+        print(f"[responder] event=pull_request_review_comment pr={pr_number} comment_id={comment_id} body={body!r}")
+
+        if not (pr_number and comment_id and _contains_mention(body, BOT_MENTION)):
+            print("[responder] skip inline: missing data or no mention")
+            raise SystemExit(0)
+
+        history_lines = _build_history(int(pr_number))
+        text = _llm_reply(history_lines)
+        # ВАЖНО: отвечаем в треде этого комментария
+        post_review_comment_reply(int(comment_id), text)
+        print(f"[responder] inline reply posted under comment {comment_id} (PR #{pr_number})")
         raise SystemExit(0)
 
-    print(f"[responder] event={event_name} pr={pr_number} body={body!r}")
-    if not pr_number or not body:
-        raise SystemExit(0)
-
-    run_responder(int(pr_number), body)
+    print(f"[responder] unsupported event: {event_name}")
+    raise SystemExit(0)
