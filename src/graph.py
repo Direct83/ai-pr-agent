@@ -32,6 +32,7 @@ def start_node(state: ReviewState) -> Dict[str, Any]:
 
 def codestyle_node(state: ReviewState) -> Dict[str, Any]:
     items = run_codestyle_agent(state["diff_text"])
+    print(f"[codestyle] raw items: {len(items or [])}")
     tagged: List[Dict[str, Any]] = []
     for it in items or []:
         if not isinstance(it, dict):
@@ -49,6 +50,7 @@ def codestyle_node(state: ReviewState) -> Dict[str, Any]:
 
 def security_node(state: ReviewState) -> Dict[str, Any]:
     items = run_security_agent(state["diff_text"])
+    print(f"[security] raw items: {len(items or [])}")
     tagged: List[Dict[str, Any]] = []
     for it in items or []:
         if not isinstance(it, dict):
@@ -70,8 +72,17 @@ def post_node(state: ReviewState) -> Dict[str, Any]:
         return {}
     if not (state.get("codestyle_done") and state.get("security_done")):
         return {}
-    premerged = merge_by_line_match(state.get("raw_comments", []))
+    raw = state.get("raw_comments", [])
+    total = len(raw or [])
+    sec_n = sum(1 for c in raw if ((c.get("body") or "").strip().lower().startswith("security:")))
+    style_n = sum(1 for c in raw if ((c.get("body") or "").strip().lower().startswith("code-style:")))
+    print(f"[post] collected raw: total={total}, code-style={style_n}, security={sec_n}")
+
+    premerged = merge_by_line_match(raw)
+    print(f"[post] premerge (by path+line_match): {len(premerged)} from {total}")
+
     resolved = resolve_positions(premerged, state["diff_index"])
+    print(f"[post] resolved to inline positions: {len(resolved)}")
     if resolved:
         post_inline_comments(state["pr_number"], resolved, state["head_sha"])
     return {"final_comments": resolved, "posted": True}
