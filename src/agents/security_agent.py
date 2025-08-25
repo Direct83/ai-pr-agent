@@ -23,6 +23,7 @@ PROMPT = (
 
 def run_security_agent(diff: str) -> List[Dict[str, Any]]:
     llm = ChatOpenAI(model=get_openai_model(), temperature=0)
-    resp = llm.invoke(PROMPT.format(diff=diff))
-    data = extract_json(resp.content or "")
+    prompt_text = PROMPT.replace("{diff}", diff)
+    resp = llm.invoke(prompt_text)
+    data = extract_json(getattr(resp, "content", "") or "")
     return data if isinstance(data, list) else []

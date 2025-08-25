@@ -21,6 +21,23 @@ def _contains_mention(text: str, mention: str) -> bool:
     return mention.lower() in (text or "").lower()
 
 
+def _extract_text(resp: Any) -> str:
+    # Пытаемся достать текст из разных типов ответов
+    if resp is None:
+        return ""
+    if isinstance(resp, str):
+        return resp
+    text = getattr(resp, "content", None)
+    if isinstance(text, str):
+        return text
+    # Поддержка формата сообщений
+    if isinstance(resp, list) and resp:
+        last = resp[-1]
+        if isinstance(last, dict):
+            return str(last.get("content", ""))
+    return str(resp)
+
+
 def run_responder(pr_number: int, trigger_text: str):
     if not _contains_mention(trigger_text, BOT_MENTION):
         return
@@ -38,7 +55,7 @@ def run_responder(pr_number: int, trigger_text: str):
         + "\n\nОтветь на последний вопрос/замечание."
     )
     resp = llm.invoke([{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}])
-    text = (getattr(resp, "content", None) or "").strip() or "Нужны детали: укажи файл/строку и суть вопроса."
+    text = (_extract_text(resp) or "").strip() or "Нужны детали: укажи файл/строку и суть вопроса."
     post_issue_comment(pr_number, text)
 
 
