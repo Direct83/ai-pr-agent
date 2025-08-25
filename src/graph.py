@@ -6,7 +6,7 @@ from langgraph.graph import StateGraph, END
 
 from .agents.codestyle_agent import run_codestyle_agent
 from .agents.security_agent import run_security_agent
-from .utils import resolve_positions, merge_by_line_match
+from .utils import resolve_positions, merge_by_line_match, concat_by_path_line
 from .github_client import post_inline_comments
 
 
@@ -83,9 +83,13 @@ def post_node(state: ReviewState) -> Dict[str, Any]:
 
     resolved = resolve_positions(premerged, state["diff_index"])
     print(f"[post] resolved to inline positions: {len(resolved)}")
-    if resolved:
-        post_inline_comments(state["pr_number"], resolved, state["head_sha"])
-    return {"final_comments": resolved, "posted": True}
+
+    # Дополнительное объединение после привязки: по (path, line)
+    post_merged = concat_by_path_line(resolved)
+    print(f"[post] merged by path+line: {len(post_merged)} from {len(resolved)}")
+    if post_merged:
+        post_inline_comments(state["pr_number"], post_merged, state["head_sha"])
+    return {"final_comments": post_merged, "posted": True}
 
 
 # Сборка Parallel Graph

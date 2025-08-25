@@ -153,61 +153,54 @@ def resolve_positions(agent_items: List[Dict[str, Any]], diff_index: Dict[str, L
     return resolved
 
 
-def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _merge_generic(items: List[Dict[str, Any]], key_fn) -> List[Dict[str, Any]]:
+    """Общий алгоритм объединения по ключу. Склеивает body через пробел.
+    Сохраняет порядок первых появлений ключей; элементы без ключа идут как есть.
     """
-    Объединяет элементы с одинаковыми (path, line_match) в один, склеивая body через пробел.
-    Порядок сохраняется по первому появлению каждой пары (path, line_match).
-    """
-    if not agent_items:
+    if not items:
         return []
-
-    # Сбор частей по ключу (path, line_match)
-    key_to_parts: Dict[Tuple[str, str], List[str]] = {}
-    key_to_proto: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    order: List[Tuple[str, str]] = []
-
-    for it in agent_items:
-        path = it.get("path") or ""
-        lm = (it.get("line_match") or "").strip()
+    grouped: Dict[Tuple[Any, ...], List[str]] = {}
+    proto: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
+    order: List[Tuple[str, Any]] = []  # (tag, key_or_item)
+    for it in items:
         body = (it.get("body") or it.get("message") or "").strip()
-        if path and lm and body:
-            key = (path, lm)
-            if key not in key_to_parts:
-                key_to_parts[key] = []
-                key_to_proto[key] = dict(it)
-                order.append(key)
-            key_to_parts[key].append(body)
-        else:
-            # Сохраняем элементы без line_match как есть (вставим их позже по порядку)
-            # Пометим уникальный ключ, чтобы затем корректно восстановить порядок
-            pass
+        key = key_fn(it)
+        if key is None or not body:
+            order.append(("raw", it))
+            continue
+        if key not in grouped:
+            grouped[key] = []
+            proto[key] = dict(it)
+            order.append(("key", key))
+        grouped[key].append(body)
 
-    # Формируем объединённые элементы, сохраняя порядок первых появлений ключей
-    merged_by_key: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    for key in order:
-        proto = key_to_proto[key]
-        parts = key_to_parts.get(key) or []
-        combined_body = " ".join(parts).strip()
-        new_item = dict(proto)
-        new_item["body"] = combined_body
-        merged_by_key[key] = new_item
-
-    # Восстанавливаем исходный порядок обходом входного списка и вставляем
-    # объединённые элементы один раз на первое вхождение соответствующего key
-    seen_keys: set[Tuple[str, str]] = set()
     result: List[Dict[str, Any]] = []
-    for it in agent_items:
+    seen: set = set()
+    for tag, obj in order:
+        if tag == "raw":
+            result.append(obj)  # как есть
+        else:
+            key = obj
+            if key in seen:
+                continue
+            seen.add(key)
+            new_it = dict(proto[key])
+            new_it["body"] = " ".join(grouped.get(key) or [])
+            result.append(new_it)
+    return result
+
+
+def merge_by_line_match(agent_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _key(it: Dict[str, Any]):
         path = it.get("path") or ""
         lm = (it.get("line_match") or "").strip()
-        body = (it.get("body") or it.get("message") or "").strip()
-        if path and lm and body:
-            key = (path, lm)
-            if key in merged_by_key and key not in seen_keys:
-                result.append(merged_by_key[key])
-                seen_keys.add(key)
-            # повторные элементы того же ключа пропускаем (они уже объединены)
-        else:
-            # Элемент без line_match — оставляем как есть
-            result.append(it)
+        return (path, lm) if (path and lm) else None
+    return _merge_generic(agent_items, _key)
 
-    return result
+
+def concat_by_path_line(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _key(it: Dict[str, Any]):
+        path = it.get("path")
+        line = it.get("line")
+        return (path, line) if (path and isinstance(line, int)) else None
+    return _merge_generic(items, _key)
