@@ -1,0 +1,30 @@
+name: AI Mention Responder
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  respond:
+    # Триггеримся только если в тексте есть упоминание ai-reviewer
+    if: contains(github.event.comment.body, 'ai-reviewer') || contains(github.event.comment.body, '@ai-reviewer')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install -r requirements.txt
+      - name: Respond to mention
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # BOT_MENTION можно переопределить секретом/var, но по умолчанию = "@ai-reviewer"
+          BOT_MENTION: '@ai-reviewer'
+        run: python -m src.comment_responder
