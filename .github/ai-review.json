@@ -1,0 +1,45 @@
+{
+    "version": "1.0.0",
+    "files": {
+        "include": [
+            "**/*.{ts,tsx,js,jsx}"
+        ],
+        "exclude": [
+            "**/dist/**",
+            "**/build/**",
+            "**/node_modules/**"
+        ]
+    },
+    "formatting": {
+        "printWidth": 100,
+        "semi": true,
+        "singleQuote": true,
+        "trailingComma": "all"
+    },
+    "naming": {
+        "variables": "camelCase",
+        "reactComponents": "PascalCase",
+        "constants": "UPPER_CASE_SNAKE"
+    },
+    "forbiddenPatterns": [
+        {
+            "id": "no-var",
+            "severity": "error",
+            "message": "Используй let/const вместо var.",
+            "regex": "\\bvar\\s+"
+        },
+        {
+            "id": "no-console",
+            "severity": "error",
+            "message": "Убери console.* из прод-кода.",
+            "regex": "console\\.(log|warn|error|info|debug)\\("
+        }
+    ],
+    "ai_guidance": {
+        "language": "ru",
+        "lineMatch": {
+            "strategy": "short_unique_substring",
+            "maxLength": 80
+        }
+    }
+}
