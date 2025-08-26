@@ -1,13 +1,11 @@
 from typing import TypedDict, List, Dict, Any
-import re
 from typing import Annotated
 import operator
 
 from langgraph.graph import StateGraph, END
 
 from .agents.codestyle_agent import run_codestyle_agent
-from .agents.security_agent import run_security_agent
-from .utils import resolve_positions, merge_by_line_match, concat_by_path_line
+from .utils import resolve_positions
 from .github_client import post_inline_comments
 
 
@@ -22,7 +20,6 @@ class ReviewState(TypedDict, total=False):
     # выход/флаги
     final_comments: List[Dict[str, Any]]
     codestyle_done: bool
-    security_done: bool
     posted: bool
 
 
@@ -41,45 +38,24 @@ def codestyle_node(state: ReviewState) -> Dict[str, Any]:
         if not body:
             continue
         new_it = dict(it)
-        if not body.lower().startswith("code-style:"):
-            body = f"code-style: {body}"
         new_it["body"] = body
         tagged.append(new_it)
     return {"raw_comments": tagged, "codestyle_done": True}
 
 
-def security_node(state: ReviewState) -> Dict[str, Any]:
-    items = run_security_agent(state["diff_text"])
-    tagged: List[Dict[str, Any]] = []
-    for it in items or []:
-        if not isinstance(it, dict):
-            continue
-        body = (it.get("body") or it.get("message") or "").strip()
-        if not body:
-            continue
-        new_it = dict(it)
-        if not body.lower().startswith("security:"):
-            body = f"security: {body}"
-        new_it["body"] = body
-        tagged.append(new_it)
-    return {"raw_comments": tagged, "security_done": True}
-
-
 def post_node(state: ReviewState) -> Dict[str, Any]:
-    # Публикуем один раз, когда обе ветки завершены
+    # Публикуем один раз, когда ветка codestyle завершена
     if state.get("posted"):
         return {}
-    if not (state.get("codestyle_done") and state.get("security_done")):
+    if not state.get("codestyle_done"):
         return {}
     raw = state.get("raw_comments", [])
     total = len(raw or [])
-    premerged = merge_by_line_match(raw)
-    resolved = resolve_positions(premerged, state["diff_index"])
-    # Дополнительное объединение после привязки: по (path, line) с пустой строкой между сообщениями
-    post_merged = concat_by_path_line(resolved)
-    if post_merged:
-        post_inline_comments(state["pr_number"], post_merged, state["head_sha"])
-    return {"final_comments": post_merged, "posted": True}
+    resolved = resolve_positions(raw, state["diff_index"])
+    final_items = resolved
+    if final_items:
+        post_inline_comments(state["pr_number"], final_items, state["head_sha"])
+    return {"final_comments": final_items, "posted": True}
 
 
 # Сборка Parallel Graph
@@ -87,16 +63,12 @@ graph = StateGraph(ReviewState)
 
 graph.add_node("Start", start_node)
 graph.add_node("CodeStyle", codestyle_node)
-graph.add_node("Security", security_node)
 graph.add_node("Post", post_node)
 
 graph.set_entry_point("Start")
-# Параллельные ветки от Start
+# Линейный граф: Start -> CodeStyle -> Post
 graph.add_edge("Start", "CodeStyle")
-graph.add_edge("Start", "Security")
-# Обе ветки сходятся в Post; он сам проверяет готовность обеих
 graph.add_edge("CodeStyle", "Post")
-graph.add_edge("Security", "Post")
 graph.add_edge("Post", END)
 
 review_graph = graph.compile()

@@ -1,11 +1,9 @@
-# PR AI Reviewer (LangGraph)
+# PR AI Reviewer
 
-Агент для автоматического ревью Pull Request: параллельно проверяет Code Style и Security, публикует инлайн‑комментарии и отвечает в инлайн‑треде по `@ai` с учётом контекста треда.
+Агент для автоматического ревью Pull Request: проверяет Code Style по диффу, публикует инлайн‑комментарии и отвечает в инлайн‑треде по `@ai` с учётом контекста треда.
 
 ## Возможности
-- Параллельный анализ (LangGraph, Parallel Graph): CodeStyle + Security
 - Инлайн‑комментарии в PR (line_match‑only, без числовых позиций)
-- Объединение комментариев от разных агентов по одной строке: тексты склеиваются с пустой строкой между ними
 - Ответы бота в инлайн‑треде по упоминанию `@ai` (через `in_reply_to`) с учётом полного контекста нитки
 - Фильтр: анализируются только файлы, чьи пути начинаются с `src/` (чтобы не комментировать служебные файлы)
 
@@ -43,10 +41,9 @@ python -m src.main <PR_NUMBER>
 Что произойдёт:
 1) Скачаем список файлов PR → отфильтруем по `REVIEW_ONLY_PREFIXES` (по умолчанию `src/**`)
 2) Сформируем дифф только по выбранным файлам
-3) Запустим параллельно агентов CodeStyle и Security (LangGraph)
-4) Нормализуем и объединим элементы с одинаковым `(path, line_match)`
-5) Привяжем к строкам новой версии (по `line_match`; при отсутствии `path` ищем уникальное совпадение по всем файлам)
-6) Объединим комментарии на одной строке и опубликуем их
+3) Запустим агент CodeStyle
+4) Привяжем найденные нарушения к строкам новой версии (по `line_match`)
+5) Опубликуем каждый комментарий отдельно
 
 ## GitHub Actions — готовые рабочие конфигурации
 Ниже — YAML, которыми можно пользоваться «как есть» в целевом репозитории.
@@ -110,11 +107,10 @@ jobs:
 
 ## Структура проекта (основные файлы)
 - `src/config.py` — загрузка настроек; `BOT_MENTION`, `REVIEW_ONLY_PREFIXES`
-- `src/utils.py` — `extract_json`, `path_included`, `build_filtered_files`, `build_diff_text_from_files`, `build_diff_index`, `resolve_positions` (line_match‑only) и объединение комментариев до/после привязки
+- `src/utils.py` — `extract_json`, `path_included`, `build_filtered_files`, `build_diff_text_from_files`, `build_diff_index`, `resolve_positions` (line_match‑only)
 - `src/github_client.py` — GitHub API (PR info, diff/files, inline‑комментарии, сбор треда, ответ в треде)
-- `src/agents/codestyle_agent.py` — агент проверки code style (ChatOpenAI)
-- `src/agents/security_agent.py` — агент проверки безопасности (ChatOpenAI)
-- `src/graph.py` — LangGraph: параллельные ветки CodeStyle и Security, узел публикации
+- `src/agents/codestyle_agent.py` — агент проверки code style
+- `src/graph.py` — линейный граф: CodeStyle → публикация
 - `src/main.py` — точка запуска ревью
 - `src/comment_responder.py` — inline‑responder по `@ai` (только `pull_request_review_comment`)
 

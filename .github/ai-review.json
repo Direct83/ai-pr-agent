@@ -33,6 +33,54 @@
             "severity": "error",
             "message": "Убери console.* из прод-кода.",
             "regex": "console\\.(log|warn|error|info|debug)\\("
+        },
+        {
+            "id": "no-eval",
+            "severity": "error",
+            "message": "Не используй eval/new Function (риск RCE/XSS).",
+            "regex": "\\b(eval|new\\s+Function)\\s*\\("
+        },
+        {
+            "id": "no-innerHTML",
+            "severity": "error",
+            "message": "Не используй innerHTML/dangerouslySetInnerHTML (XSS риск).",
+            "regex": "\\b(innerHTML\\s*=|dangerouslySetInnerHTML\\b)"
+        },
+        {
+            "id": "no-document-write",
+            "severity": "warning",
+            "message": "Не используй document.write (XSS/инъекции).",
+            "regex": "\\bdocument\\.write\\s*\\("
+        },
+        {
+            "id": "no-http",
+            "severity": "warning",
+            "message": "Используй https:// вместо http://.",
+            "regex": "http://"
+        },
+        {
+            "id": "no-hardcoded-secrets-aws",
+            "severity": "error",
+            "message": "Похоже на AWS Access Key. Уберите из кода.",
+            "regex": "AKIA[0-9A-Z]{16}"
+        },
+        {
+            "id": "no-hardcoded-secrets-gh",
+            "severity": "error",
+            "message": "Похоже на GitHub token. Уберите из кода.",
+            "regex": "ghp_[A-Za-z0-9]{36}"
+        },
+        {
+            "id": "no-hardcoded-secrets-generic",
+            "severity": "error",
+            "message": "Похоже на хардкод секрета/пароля (secret/token/apiKey/password).",
+            "regex": "(secret|token|api[_-]?key|password)\\s*[:=]\\s*['\"][^'\"\\n]{6,}['\"]"
+        },
+        {
+            "id": "no-log-sensitive",
+            "severity": "warning",
+            "message": "Не логируй чувствительные данные (PII/секреты).",
+            "regex": "console\\.(log|info)\\s*\\((?:[^)]*(password|token|secret|key|email|name|pii|user|phone)[^)]*)\\)"
         }
     ],
     "ai_guidance": {
