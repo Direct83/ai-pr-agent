@@ -14,7 +14,6 @@ GITHUB_REPO = os.getenv("GITHUB_REPO")  # 'owner/repo' или None
 # Ник-упоминание агента
 BOT_MENTION = os.getenv("BOT_MENTION", "@ai")
 
-import os
 REVIEW_ONLY_PREFIXES = [p.strip() for p in os.getenv("REVIEW_ONLY_PREFIXES", "src/").split(",") if p.strip()]
 
 def require_var(name: str, value: str | None):
